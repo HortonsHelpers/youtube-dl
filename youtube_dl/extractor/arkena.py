@@ -55,11 +55,10 @@ class ArkenaIE(InfoExtractor):
 
     @staticmethod
     def _extract_url(webpage):
-        # See https://support.arkena.com/display/PLAY/Ways+to+embed+your+video
-        mobj = re.search(
+        if mobj := re.search(
             r'<iframe[^>]+src=(["\'])(?P<url>(?:https?:)?//play\.arkena\.com/embed/avp/.+?)\1',
-            webpage)
-        if mobj:
+            webpage,
+        ):
             return mobj.group('url')
 
     def _real_extract(self, url):
@@ -76,11 +75,13 @@ class ArkenaIE(InfoExtractor):
                 raise ExtractorError('Invalid URL', expected=True)
 
         media = self._download_json(
-            'https://video.qbrick.com/api/v1/public/accounts/%s/medias/%s' % (account_id, video_id),
-            video_id, query={
+            f'https://video.qbrick.com/api/v1/public/accounts/{account_id}/medias/{video_id}',
+            video_id,
+            query={
                 # https://video.qbrick.com/docs/api/examples/library-api.html
                 'fields': 'asset/resources/*/renditions/*(height,id,language,links/*(href,mimeType),type,size,videos/*(audios/*(codec,sampleRate),bitrate,codec,duration,height,width),width),created,metadata/*(title,description),tags',
-            })
+            },
+        )
         metadata = media.get('metadata') or {}
         title = metadata['title']
 
@@ -113,8 +114,9 @@ class ArkenaIE(InfoExtractor):
                             'format_id': rendition.get('id'),
                             'url': href,
                         }
-                        video = try_get(rendition, lambda x: x['videos'][i], dict)
-                        if video:
+                        if video := try_get(
+                            rendition, lambda x: x['videos'][i], dict
+                        ):
                             if not duration:
                                 duration = float_or_none(video.get('duration'))
                             f.update({
@@ -123,8 +125,9 @@ class ArkenaIE(InfoExtractor):
                                 'vcodec': video.get('codec'),
                                 'width': int_or_none(video.get('width')),
                             })
-                            audio = try_get(video, lambda x: x['audios'][0], dict)
-                            if audio:
+                            if audio := try_get(
+                                video, lambda x: x['audios'][0], dict
+                            ):
                                 f.update({
                                     'acodec': audio.get('codec'),
                                     'asr': int_or_none(audio.get('sampleRate')),
@@ -139,10 +142,10 @@ class ArkenaIE(InfoExtractor):
                             formats.extend(self._extract_m3u8_formats(
                                 href, video_id, 'mp4', 'm3u8_native',
                                 m3u8_id='hls', fatal=False))
-                        elif mime_type == 'application/hds+xml':
-                            formats.extend(self._extract_f4m_formats(
-                                href, video_id, f4m_id='hds', fatal=False))
-                        elif mime_type == 'application/dash+xml':
+                        elif mime_type in [
+                            'application/hds+xml',
+                            'application/dash+xml',
+                        ]:
                             formats.extend(self._extract_f4m_formats(
                                 href, video_id, f4m_id='hds', fatal=False))
                         elif mime_type == 'application/vnd.ms-sstr+xml':

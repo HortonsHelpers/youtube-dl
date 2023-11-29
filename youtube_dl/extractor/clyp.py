@@ -52,14 +52,14 @@ class ClypIE(InfoExtractor):
             query['token'] = token
 
         metadata = self._download_json(
-            'https://api.clyp.it/%s' % audio_id, audio_id, query=query)
+            f'https://api.clyp.it/{audio_id}', audio_id, query=query
+        )
 
         formats = []
         for secure in ('', 'Secure'):
             for ext in ('Ogg', 'Mp3'):
-                format_id = '%s%s' % (secure, ext)
-                format_url = metadata.get('%sUrl' % format_id)
-                if format_url:
+                format_id = f'{secure}{ext}'
+                if format_url := metadata.get(f'{format_id}Url'):
                     formats.append({
                         'url': format_url,
                         'format_id': format_id,

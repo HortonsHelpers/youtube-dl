@@ -40,8 +40,9 @@ class ClippitIE(InfoExtractor):
         quality = qualities(FORMATS)
         formats = []
         for format_id in FORMATS:
-            url = self._html_search_regex(r'data-%s-file="(.+?)"' % format_id,
-                                          webpage, 'url', fatal=False)
+            url = self._html_search_regex(
+                f'data-{format_id}-file="(.+?)"', webpage, 'url', fatal=False
+            )
             if not url:
                 continue
             match = re.search(r'/(?P<height>\d+)\.mp4', url)
@@ -54,8 +55,7 @@ class ClippitIE(InfoExtractor):
 
         uploader = self._html_search_regex(r'class="username".*>\s+(.+?)\n',
                                            webpage, 'uploader', fatal=False)
-        uploader_url = ('https://www.clippituser.tv/p/' + uploader
-                        if uploader else None)
+        uploader_url = f'https://www.clippituser.tv/p/{uploader}' if uploader else None
 
         timestamp = self._html_search_regex(r'datetime="(.+?)"',
                                             webpage, 'date', fatal=False)
