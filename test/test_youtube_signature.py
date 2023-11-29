@@ -101,7 +101,7 @@ def make_tfunc(url, sig_input, expected_sig):
     test_id = m.group(1)
 
     def test_func(self):
-        basename = 'player-%s.js' % test_id
+        basename = f'player-{test_id}.js'
         fn = os.path.join(self.TESTDATA_DIR, basename)
 
         if not os.path.exists(fn):
@@ -118,7 +118,7 @@ def make_tfunc(url, sig_input, expected_sig):
         got_sig = func(src_sig)
         self.assertEqual(got_sig, expected_sig)
 
-    test_func.__name__ = str('test_signature_js_' + test_id)
+    test_func.__name__ = str(f'test_signature_js_{test_id}')
     setattr(TestSignature, test_func.__name__, test_func)
 
 

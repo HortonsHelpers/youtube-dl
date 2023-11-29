@@ -21,7 +21,7 @@ _OPERATORS = [
     ('/', operator.truediv),
     ('*', operator.mul),
 ]
-_ASSIGN_OPERATORS = [(op + '=', opfunc) for op, opfunc in _OPERATORS]
+_ASSIGN_OPERATORS = [(f'{op}=', opfunc) for op, opfunc in _OPERATORS]
 _ASSIGN_OPERATORS.append(('=', lambda cur, right: right))
 
 _NAME_RE = r'[a-zA-Z_$][a-zA-Z_$0-9]*'
@@ -41,17 +41,14 @@ class JSInterpreter(object):
 
         should_abort = False
         stmt = stmt.lstrip()
-        stmt_m = re.match(r'var\s', stmt)
-        if stmt_m:
+        if stmt_m := re.match(r'var\s', stmt):
             expr = stmt[len(stmt_m.group(0)):]
+        elif return_m := re.match(r'return(?:\s+|$)', stmt):
+            expr = stmt[len(return_m.group(0)):]
+            should_abort = True
         else:
-            return_m = re.match(r'return(?:\s+|$)', stmt)
-            if return_m:
-                expr = stmt[len(return_m.group(0)):]
-                should_abort = True
-            else:
-                # Try interpreting it as an expression
-                expr = stmt
+            # Try interpreting it as an expression
+            expr = stmt
 
         v = self.interpret_expression(expr, local_vars, allow_recursion)
         return v, should_abort
@@ -72,11 +69,10 @@ class JSInterpreter(object):
                         sub_expr = expr[1:m.start()]
                         sub_result = self.interpret_expression(
                             sub_expr, local_vars, allow_recursion)
-                        remaining_expr = expr[m.end():].strip()
-                        if not remaining_expr:
-                            return sub_result
-                        else:
+                        if remaining_expr := expr[m.end() :].strip():
                             expr = json.dumps(sub_result) + remaining_expr
+                        else:
+                            return sub_result
                         break
             else:
                 raise ExtractorError('Premature end of parens in %r' % expr)
@@ -99,20 +95,17 @@ class JSInterpreter(object):
                 cur = lvar[idx]
                 val = opfunc(cur, right_val)
                 lvar[idx] = val
-                return val
             else:
                 cur = local_vars.get(m.group('out'))
                 val = opfunc(cur, right_val)
                 local_vars[m.group('out')] = val
-                return val
-
+            return val
         if expr.isdigit():
             return int(expr)
 
-        var_m = re.match(
-            r'(?!if|return|true|false)(?P<name>%s)$' % _NAME_RE,
-            expr)
-        if var_m:
+        if var_m := re.match(
+            f'(?!if|return|true|false)(?P<name>{_NAME_RE})$', expr
+        ):
             return local_vars[var_m.group('name')]
 
         try:
@@ -120,18 +113,17 @@ class JSInterpreter(object):
         except ValueError:
             pass
 
-        m = re.match(
-            r'(?P<in>%s)\[(?P<idx>.+)\]$' % _NAME_RE, expr)
-        if m:
+        if m := re.match(r'(?P<in>%s)\[(?P<idx>.+)\]$' % _NAME_RE, expr):
             val = local_vars[m.group('in')]
             idx = self.interpret_expression(
                 m.group('idx'), local_vars, allow_recursion - 1)
             return val[idx]
 
-        m = re.match(
-            r'(?P<var>%s)(?:\.(?P<member>[^(]+)|\[(?P<member2>[^]]+)\])\s*(?:\(+(?P<args>[^()]*)\))?$' % _NAME_RE,
-            expr)
-        if m:
+        if m := re.match(
+            r'(?P<var>%s)(?:\.(?P<member>[^(]+)|\[(?P<member2>[^]]+)\])\s*(?:\(+(?P<args>[^()]*)\))?$'
+            % _NAME_RE,
+            expr,
+        ):
             variable = m.group('var')
             member = remove_quotes(m.group('member') or m.group('member2'))
             arg_str = m.group('args')
@@ -145,18 +137,16 @@ class JSInterpreter(object):
 
             if arg_str is None:
                 # Member access
-                if member == 'length':
-                    return len(obj)
-                return obj[member]
-
+                return len(obj) if member == 'length' else obj[member]
             assert expr.endswith(')')
             # Function call
             if arg_str == '':
                 argvals = tuple()
             else:
-                argvals = tuple([
+                argvals = tuple(
                     self.interpret_expression(v, local_vars, allow_recursion)
-                    for v in arg_str.split(',')])
+                    for v in arg_str.split(',')
+                )
 
             if member == 'split':
                 assert argvals == ('',)
@@ -165,7 +155,7 @@ class JSInterpreter(object):
                 assert len(argvals) == 1
                 return argvals[0].join(obj)
             if member == 'reverse':
-                assert len(argvals) == 0
+                assert not argvals
                 obj.reverse()
                 return obj
             if member == 'slice':
@@ -174,15 +164,11 @@ class JSInterpreter(object):
             if member == 'splice':
                 assert isinstance(obj, list)
                 index, howMany = argvals
-                res = []
-                for i in range(index, min(index + howMany, len(obj))):
-                    res.append(obj.pop(index))
-                return res
-
+                return [obj.pop(index) for _ in range(index, min(index + howMany, len(obj)))]
             return obj[member](argvals)
 
         for op, opfunc in _OPERATORS:
-            m = re.match(r'(?P<x>.+?)%s(?P<y>.+)' % re.escape(op), expr)
+            m = re.match(f'(?P<x>.+?){re.escape(op)}(?P<y>.+)', expr)
             if not m:
                 continue
             x, abort = self.interpret_statement(
@@ -197,13 +183,18 @@ class JSInterpreter(object):
                     'Premature right-side return of %s in %r' % (op, expr))
             return opfunc(x, y)
 
-        m = re.match(
-            r'^(?P<func>%s)\((?P<args>[a-zA-Z0-9_$,]*)\)$' % _NAME_RE, expr)
-        if m:
+        if m := re.match(
+            r'^(?P<func>%s)\((?P<args>[a-zA-Z0-9_$,]*)\)$' % _NAME_RE, expr
+        ):
             fname = m.group('func')
-            argvals = tuple([
-                int(v) if v.isdigit() else local_vars[v]
-                for v in m.group('args').split(',')]) if len(m.group('args')) > 0 else tuple()
+            argvals = (
+                tuple(
+                    int(v) if v.isdigit() else local_vars[v]
+                    for v in m.group('args').split(',')
+                )
+                if len(m.group('args')) > 0
+                else tuple()
+            )
             if fname not in self._functions:
                 self._functions[fname] = self.extract_function(fname)
             return self._functions[fname](argvals)
